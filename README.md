@@ -3,7 +3,7 @@
 A small, app-agnostic toolkit for inspecting and controlling Android devices
 through ADB, with optional goal-driven automation.
 
-## One-command setup
+## Setup and run
 
 Requirements:
 
@@ -11,15 +11,27 @@ Requirements:
 - Android platform tools (`adb`) on `PATH`
 - an Android device or emulator with USB debugging enabled
 
-Run:
+Set up once:
+
+```bash
+python setup.py
+```
+
+`setup.py` checks Python, creates `.venv`, installs the project and every
+supported AI provider SDK, verifies package consistency, and records the
+installed project version. It is safe to run repeatedly; a healthy environment
+is left alone. Use `python setup.py --force` to rebuild it.
+
+Run the application:
 
 ```bash
 python run.py
 ```
 
-`run.py` creates `.venv`, installs the project and all supported AI provider
-SDKs, and starts the minimal CLI. It is safe to run again; dependencies are
-reinstalled only when `pyproject.toml` changes.
+`run.py` checks the runtime before every launch. If the environment is missing,
+outdated, or has broken dependencies, it runs `setup.py` automatically and then
+retries the requested command. Running `setup.py` yourself is therefore
+optional, but useful when preparing a machine ahead of time.
 
 Useful first checks:
 
@@ -28,9 +40,9 @@ python run.py doctor
 python run.py devices
 ```
 
-The launcher works on macOS, Linux, and Windows. If the Python used to start it
-is too old, it searches for an installed `python3.10` or newer before stopping
-with an installation link.
+Both scripts work on macOS, Linux, and Windows. If the Python used to start them
+is too old, setup searches for an installed `python3.10` or newer before
+stopping with an installation link.
 
 ## AI providers
 
@@ -118,7 +130,8 @@ python run.py key BACK
 - `providers.py` contains native Gemini, OpenAI, and Anthropic adapters.
 - `agent.py` executes a small allowlisted action protocol.
 - `cli.py` is the presentation and dependency-wiring layer.
-- `run.py` is the dependency-free bootstrap and launch path.
+- `setup.py` installs and validates the local runtime.
+- `run.py` loads local configuration, self-repairs the runtime, and launches.
 
 AI-generated actions are restricted to tap, text input, key events, waiting,
 success, and stop. Models cannot emit arbitrary shell commands. The `shell`

@@ -1,42 +1,17 @@
 #!/usr/bin/env python3
-"""Bootstrap Android Automation and run it.
-
-This file intentionally uses only the Python standard library so it can create
-the project's virtual environment before any project dependency is installed.
-"""
+"""Run Android Automation, repairing its local runtime when necessary."""
 
 from __future__ import annotations
 
-import hashlib
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
+import setup as project_setup
+
 
 ROOT = Path(__file__).resolve().parent
-VENV = ROOT / ".venv"
-MARKER = VENV / ".android-automation-install"
-
-
-def venv_python() -> Path:
-    if os.name == "nt":
-        return VENV / "Scripts" / "python.exe"
-    return VENV / "bin" / "python"
-
-
-def installation_fingerprint() -> str:
-    inputs = [ROOT / "pyproject.toml"]
-    digest = hashlib.sha256()
-    for path in inputs:
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
-def run_checked(command: list[str]) -> None:
-    print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=ROOT, check=True)
 
 
 def load_dotenv(path: Path = ROOT / ".env") -> None:
@@ -57,61 +32,40 @@ def load_dotenv(path: Path = ROOT / ".env") -> None:
         os.environ.setdefault(key, value)
 
 
-def compatible_python_command() -> list[str]:
-    if sys.version_info >= (3, 10):
-        return [sys.executable]
-
-    candidates = [
-        [path]
-        for name in ("python3.13", "python3.12", "python3.11", "python3.10", "python3")
-        if (path := shutil.which(name))
-    ]
-    if os.name == "nt" and shutil.which("py"):
-        candidates = [
-            ["py", version]
-            for version in ("-3.13", "-3.12", "-3.11", "-3.10")
-        ] + candidates
-
-    for command in candidates:
-        result = subprocess.run(
-            [
-                *command,
-                "-c",
-                "import sys; raise SystemExit(sys.version_info < (3, 10))",
-            ],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            return command
-    raise SystemExit(
-        "Python 3.10 or newer is required. Install it from https://python.org "
-        "and run this file again."
+def execute(arguments: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            str(project_setup.venv_python()),
+            "-m",
+            "android_automation",
+            *arguments,
+        ],
+        cwd=ROOT,
     )
 
 
-def bootstrap() -> Path:
-    python = venv_python()
-    if not python.exists():
-        run_checked([*compatible_python_command(), "-m", "venv", str(VENV)])
-
-    fingerprint = installation_fingerprint()
-    installed = MARKER.read_text().strip() if MARKER.exists() else ""
-    if installed != fingerprint:
-        run_checked([str(python), "-m", "pip", "install", "--upgrade", "pip"])
-        run_checked([str(python), "-m", "pip", "install", "-e", ".[all]"])
-        MARKER.write_text(fingerprint + "\n")
-    return python
-
-
-def main() -> int:
+def main(arguments: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if arguments is None else arguments
+    load_dotenv()
     try:
-        load_dotenv()
-        python = bootstrap()
-        command = [str(python), "-m", "android_automation", *sys.argv[1:]]
-        return subprocess.run(command, cwd=ROOT).returncode
-    except subprocess.CalledProcessError as error:
-        print(f"Setup failed with exit code {error.returncode}.", file=sys.stderr)
-        return error.returncode
+        if not project_setup.runtime_is_ready():
+            print("Runtime is missing or incomplete; running setup.py.")
+            project_setup.ensure_runtime()
+
+        result = execute(arguments)
+        if result.returncode == 0:
+            return 0
+
+        # Exit code 127 means the installed command could not be loaded. Repair
+        # once, then preserve the application's second exit code.
+        if result.returncode == 127:
+            print("Runtime failed to start; repairing with setup.py.")
+            project_setup.ensure_runtime(force=True)
+            return execute(arguments).returncode
+        return result.returncode
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        print(f"Could not run Android Automation: {error}", file=sys.stderr)
+        return getattr(error, "returncode", 1)
 
 
 if __name__ == "__main__":
