@@ -39,6 +39,24 @@ def run_checked(command: list[str]) -> None:
     subprocess.run(command, cwd=ROOT, check=True)
 
 
+def load_dotenv(path: Path = ROOT / ".env") -> None:
+    """Load simple KEY=VALUE entries without overriding the current environment."""
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
 def compatible_python_command() -> list[str]:
     if sys.version_info >= (3, 10):
         return [sys.executable]
@@ -87,6 +105,7 @@ def bootstrap() -> Path:
 
 def main() -> int:
     try:
+        load_dotenv()
         python = bootstrap()
         command = [str(python), "-m", "android_automation", *sys.argv[1:]]
         return subprocess.run(command, cwd=ROOT).returncode
