@@ -28,6 +28,14 @@ class CliTests(unittest.TestCase):
             self.assertEqual(run(["devices"], adb=FakeAdb()), 0)
         self.assertEqual(output.getvalue(), "emulator-5554\tdevice\n")
 
+    def test_providers_lists_defaults(self) -> None:
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(run(["providers"]), 0)
+        self.assertIn("gemini\tgemini-3.5-flash", output.getvalue())
+        self.assertIn("openai\tgpt-5.4-mini", output.getvalue())
+        self.assertIn("anthropic\tclaude-sonnet-4-6", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

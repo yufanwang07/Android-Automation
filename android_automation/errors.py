@@ -16,3 +16,7 @@ class DeviceSelectionError(AndroidAutomationError):
 
 class AgentConfigurationError(AndroidAutomationError):
     """The optional agent is missing configuration or dependencies."""
+
+
+class ProviderRequestError(AndroidAutomationError):
+    """An AI provider request failed or returned an unusable response."""

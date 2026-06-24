@@ -1,0 +1,8 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "max_steps": 20,
+  "step_delay_seconds": 0.5,
+  "max_output_tokens": 512,
+  "base_url": null
+}

@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import json
-import os
 import time
-from typing import Protocol
 
 from .adb import AdbClient
-from .errors import AgentConfigurationError
+from .providers import ModelProvider
 
 
 class ActionType(str, Enum):
@@ -52,40 +50,6 @@ class AgentAction:
             raise ValueError("Wait duration must be between 0 and 30 seconds.")
 
 
-class ModelProvider(Protocol):
-    def decide(self, prompt: str) -> str: ...
-
-
-class GeminiProvider:
-    def __init__(self, client: object, model: str) -> None:
-        self.client = client
-        self.model = model
-
-    @classmethod
-    def from_environment(cls, model: str | None = None) -> GeminiProvider:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise AgentConfigurationError("Set GEMINI_API_KEY before using the agent.")
-        try:
-            from google import genai
-        except ImportError as error:
-            raise AgentConfigurationError(
-                'Install the optional dependency with: pip install -e ".[agent]"'
-            ) from error
-        return cls(
-            client=genai.Client(api_key=api_key),
-            model=model or os.getenv("ANDROID_AUTOMATION_MODEL", "gemini-2.5-flash"),
-        )
-
-    def decide(self, prompt: str) -> str:
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config={"response_mime_type": "application/json"},
-        )
-        return response.text
-
-
 class UiAgent:
     def __init__(
         self,
@@ -93,19 +57,22 @@ class UiAgent:
         provider: ModelProvider,
         *,
         max_steps: int = 20,
+        step_delay_seconds: float = 0.5,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive.")
         self.adb = adb.selected()
         self.provider = provider
         self.max_steps = max_steps
+        self.step_delay_seconds = step_delay_seconds
 
     def run(self, goal: str) -> AgentAction:
         previous = "No previous action."
         for step in range(1, self.max_steps + 1):
             xml = self.adb.dump_ui_xml()
-            prompt = self._prompt(goal, xml, step, previous)
-            action = AgentAction.from_json(self.provider.decide(prompt))
+            action = AgentAction.from_json(
+                self.provider.decide(self._prompt(goal, xml, step, previous))
+            )
             previous = action.reason or action.type.value
 
             if action.type is ActionType.TAP:
@@ -119,7 +86,7 @@ class UiAgent:
             elif action.type in (ActionType.SUCCESS, ActionType.STOP):
                 return action
 
-            time.sleep(0.5)
+            time.sleep(self.step_delay_seconds)
         return AgentAction(
             type=ActionType.STOP,
             reason=f"Stopped after the {self.max_steps}-step limit.",
@@ -127,23 +94,17 @@ class UiAgent:
 
     @staticmethod
     def _prompt(goal: str, xml: str, step: int, previous: str) -> str:
-        return f"""Control the Android UI to complete this goal:
+        return f"""You control an Android device through a restricted action interface.
+
+Goal:
 {goal}
+
+Choose exactly one safe next action. Mark success only when the goal is visibly
+complete. Mark stop when safe progress is impossible. Do not suggest shell
+commands or actions outside the available response contract.
 
 Step: {step}
 Previous action: {previous}
+
 Current UIAutomator XML:
-{xml}
-
-Return exactly one JSON object:
-{{
-  "type": "tap" | "input" | "key" | "wait" | "success" | "stop",
-  "x": integer required for tap,
-  "y": integer required for tap,
-  "text": string required for input or key,
-  "seconds": number from 0 to 30 for wait,
-  "reason": "short description"
-}}
-
-Use only the allowed action types. Never return a shell command. Use success only
-when the goal is visibly complete, and stop when safe progress is impossible."""
+{xml}"""
