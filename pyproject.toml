@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "android-automation"
+version = "0.1.0"
+description = "A small, app-agnostic Android automation toolkit built on ADB."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "license.md" }
+authors = [{ name = "Yufan Wang" }]
+dependencies = []
+
+[project.optional-dependencies]
+agent = ["google-genai>=1.0"]
+dev = ["coverage>=7"]
+
+[project.scripts]
+android-automation = "android_automation.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["android_automation*"]
+
+[tool.coverage.run]
+source = ["android_automation"]
+branch = true
